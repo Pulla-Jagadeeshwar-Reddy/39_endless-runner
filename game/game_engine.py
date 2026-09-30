@@ -12,34 +12,70 @@ DARK_GREEN = (30, 100, 30)
 # obstacles from moving further per frame than the player is wide.
 MAX_SPEED = 14
 
+# Starting values for each difficulty.
+# speed = pixels per frame, spawn_interval = frames between obstacles.
+DIFFICULTIES = {
+    "Easy":   {"speed": 5, "spawn_interval": 90},
+    "Medium": {"speed": 6, "spawn_interval": 70},
+    "Hard":   {"speed": 8, "spawn_interval": 55},
+}
+
+# Keys that choose a difficulty on the selection screen.
+DIFFICULTY_KEYS = {
+    pygame.K_1: "Easy",   pygame.K_KP1: "Easy",
+    pygame.K_2: "Medium", pygame.K_KP2: "Medium",
+    pygame.K_3: "Hard",   pygame.K_KP3: "Hard",
+}
+
 class GameEngine:
     def __init__(self, width, height):
         self.width = width
         self.height = height
         self.ground_y = height - 40
 
-        self.player = Player(80, self.ground_y)
-
-        self.speed = 6
         self.speed_increase_per_frame = 0.003
 
-        self.spawn_interval = 70  # frames between obstacle spawns
+        self.font = pygame.font.SysFont("Arial", 30)
+        self.game_over_font = pygame.font.SysFont("Arial", 60, bold=True)
+
+        # First run starts on Medium (same values the game always used).
+        self.start_game("Medium")
+
+    def start_game(self, difficulty):
+        """Reset all gameplay state and start a fresh run."""
+        settings = DIFFICULTIES[difficulty]
+
+        self.difficulty = difficulty
+        self.player = Player(80, self.ground_y)
+
+        self.speed = settings["speed"]
+        self.spawn_interval = settings["spawn_interval"]  # frames between obstacle spawns
         self._spawn_timer = 0
         self.obstacles = []
 
         self.distance = 0
         self.score = 0
-        self.font = pygame.font.SysFont("Arial", 30)
-        self.game_over_font = pygame.font.SysFont("Arial", 60, bold=True)
-        self.game_over = False
+
+        # "playing" -> "game_over" -> "difficulty" -> back to "playing"
+        self.state = "playing"
 
     def handle_event(self, event):
         if event.type != pygame.KEYDOWN:
             return
 
-        if self.game_over:
-            # Game Over screen: ignore jump keys, wait for Enter or Esc.
-            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE):
+        if self.state == "game_over":
+            # Enter opens the difficulty menu, Esc exits. Jump keys are ignored.
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                self.state = "difficulty"
+            elif event.key == pygame.K_ESCAPE:
+                pygame.event.post(pygame.event.Event(pygame.QUIT))
+            return
+
+        if self.state == "difficulty":
+            # 1/2/3 starts a new game, Esc exits.
+            if event.key in DIFFICULTY_KEYS:
+                self.start_game(DIFFICULTY_KEYS[event.key])
+            elif event.key == pygame.K_ESCAPE:
                 pygame.event.post(pygame.event.Event(pygame.QUIT))
             return
 
@@ -52,8 +88,8 @@ class GameEngine:
         pass
 
     def update(self):
-        # Normal gameplay is frozen while the Game Over screen is showing.
-        if self.game_over:
+        # Normal gameplay is frozen on the Game Over and difficulty screens.
+        if self.state != "playing":
             return
 
         # Speed ramps up gradually but never exceeds MAX_SPEED.
@@ -75,7 +111,7 @@ class GameEngine:
         player_rect = self.player.rect()
         for obstacle in self.obstacles:
             if obstacle.swept_rect().colliderect(player_rect):
-                self.game_over = True
+                self.state = "game_over"
                 return
 
         for obstacle in self.obstacles:
@@ -97,22 +133,32 @@ class GameEngine:
         score_text = self.font.render(f"Score: {self.score}", True, (0, 0, 0))
         screen.blit(score_text, (10, 10))
 
-        if self.game_over:
+        if self.state == "game_over":
             self._render_game_over(screen)
+        elif self.state == "difficulty":
+            self._render_difficulty_menu(screen)
 
-    def _render_game_over(self, screen):
+    def _draw_overlay(self, screen):
         # Darken the frozen scene so the text stands out.
         overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 160))
         screen.blit(overlay, (0, 0))
 
-        center_x = self.width // 2
+    def _draw_centered(self, screen, font, text, y):
+        surface = font.render(text, True, WHITE)
+        screen.blit(surface, surface.get_rect(center=(self.width // 2, y)))
 
-        title = self.game_over_font.render("GAME OVER", True, WHITE)
-        screen.blit(title, title.get_rect(center=(center_x, self.height // 2 - 60)))
+    def _render_game_over(self, screen):
+        self._draw_overlay(screen)
+        self._draw_centered(screen, self.game_over_font, "GAME OVER", self.height // 2 - 60)
+        self._draw_centered(screen, self.font, f"Final Score: {self.score}", self.height // 2 + 5)
+        self._draw_centered(screen, self.font, "Press Enter to play again  |  Esc to exit",
+                            self.height // 2 + 60)
 
-        final_score = self.font.render(f"Final Score: {self.score}", True, WHITE)
-        screen.blit(final_score, final_score.get_rect(center=(center_x, self.height // 2 + 5)))
-
-        prompt = self.font.render("Press Enter or Esc to exit", True, WHITE)
-        screen.blit(prompt, prompt.get_rect(center=(center_x, self.height // 2 + 60)))
+    def _render_difficulty_menu(self, screen):
+        self._draw_overlay(screen)
+        self._draw_centered(screen, self.font, "Choose a difficulty", 80)
+        self._draw_centered(screen, self.font, "1 - Easy", 140)
+        self._draw_centered(screen, self.font, "2 - Medium", 190)
+        self._draw_centered(screen, self.font, "3 - Hard", 240)
+        self._draw_centered(screen, self.font, "Esc - Exit", 310)
