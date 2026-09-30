@@ -1,3 +1,4 @@
+import os
 import pygame
 from .player import Player
 from .obstacle import Obstacle
@@ -27,6 +28,27 @@ DIFFICULTY_KEYS = {
     pygame.K_3: "Hard",   pygame.K_KP3: "Hard",
 }
 
+# The sounds/ folder sits in the project root, one level above this file.
+SOUNDS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "sounds")
+
+
+def load_sound(filename):
+    """Load a sound from the sounds/ folder.
+    Returns None (instead of crashing) if audio or the file isn't available."""
+    try:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        return pygame.mixer.Sound(os.path.join(SOUNDS_DIR, filename))
+    except (pygame.error, FileNotFoundError):
+        return None
+
+
+def play_sound(sound):
+    """Play a sound if it loaded; otherwise stay silent."""
+    if sound is not None:
+        sound.play()
+
+
 class GameEngine:
     def __init__(self, width, height):
         self.width = width
@@ -37,6 +59,11 @@ class GameEngine:
 
         self.font = pygame.font.SysFont("Arial", 30)
         self.game_over_font = pygame.font.SysFont("Arial", 60, bold=True)
+
+        # Sound effects (each is None if it couldn't be loaded).
+        self.jump_sound = load_sound("jump.wav")
+        self.score_sound = load_sound("score.wav")
+        self.game_over_sound = load_sound("game_over.wav")
 
         # First run starts on Medium (same values the game always used).
         self.start_game("Medium")
@@ -80,7 +107,11 @@ class GameEngine:
             return
 
         if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
+            # Only play the jump sound if the player actually leaves the ground.
+            was_on_ground = self.player.on_ground
             self.player.jump()
+            if was_on_ground:
+                play_sound(self.jump_sound)
 
     def handle_input(self):
         # Reserved for continuously-held-key input; this runner only
@@ -112,12 +143,14 @@ class GameEngine:
         for obstacle in self.obstacles:
             if obstacle.swept_rect().colliderect(player_rect):
                 self.state = "game_over"
+                play_sound(self.game_over_sound)
                 return
 
         for obstacle in self.obstacles:
             if not obstacle.scored and obstacle.x + obstacle.width < self.player.x:
                 obstacle.scored = True
                 self.score += 1
+                play_sound(self.score_sound)
 
         self.obstacles = [o for o in self.obstacles if not o.off_screen()]
 
