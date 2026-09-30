@@ -30,10 +30,20 @@ class GameEngine:
         self.distance = 0
         self.score = 0
         self.font = pygame.font.SysFont("Arial", 30)
+        self.game_over_font = pygame.font.SysFont("Arial", 60, bold=True)
         self.game_over = False
 
     def handle_event(self, event):
-        if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
+        if event.type != pygame.KEYDOWN:
+            return
+
+        if self.game_over:
+            # Game Over screen: ignore jump keys, wait for Enter or Esc.
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_ESCAPE):
+                pygame.event.post(pygame.event.Event(pygame.QUIT))
+            return
+
+        if event.key in (pygame.K_SPACE, pygame.K_UP, pygame.K_w):
             self.player.jump()
 
     def handle_input(self):
@@ -42,6 +52,7 @@ class GameEngine:
         pass
 
     def update(self):
+        # Normal gameplay is frozen while the Game Over screen is showing.
         if self.game_over:
             return
 
@@ -86,7 +97,22 @@ class GameEngine:
         score_text = self.font.render(f"Score: {self.score}", True, (0, 0, 0))
         screen.blit(score_text, (10, 10))
 
-        if self.game_over and not getattr(self, "_game_over_logged", False):
-            # NOTE: no proper game-over screen yet - see Task 2 in the README.
-            print("Game over! Final score:", self.score)
-            self._game_over_logged = True
+        if self.game_over:
+            self._render_game_over(screen)
+
+    def _render_game_over(self, screen):
+        # Darken the frozen scene so the text stands out.
+        overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        screen.blit(overlay, (0, 0))
+
+        center_x = self.width // 2
+
+        title = self.game_over_font.render("GAME OVER", True, WHITE)
+        screen.blit(title, title.get_rect(center=(center_x, self.height // 2 - 60)))
+
+        final_score = self.font.render(f"Final Score: {self.score}", True, WHITE)
+        screen.blit(final_score, final_score.get_rect(center=(center_x, self.height // 2 + 5)))
+
+        prompt = self.font.render("Press Enter or Esc to exit", True, WHITE)
+        screen.blit(prompt, prompt.get_rect(center=(center_x, self.height // 2 + 60)))
