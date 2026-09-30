@@ -8,6 +8,10 @@ WHITE = (255, 255, 255)
 BROWN = (120, 80, 40)
 DARK_GREEN = (30, 100, 30)
 
+# Speed ceiling (pixels per frame). Keeps long runs fair and stops
+# obstacles from moving further per frame than the player is wide.
+MAX_SPEED = 14
+
 class GameEngine:
     def __init__(self, width, height):
         self.width = width
@@ -17,8 +21,6 @@ class GameEngine:
         self.player = Player(80, self.ground_y)
 
         self.speed = 6
-        # NOTE: speed keeps climbing every frame with no ceiling. See
-        # Task 1 in the README for why that eventually breaks collision.
         self.speed_increase_per_frame = 0.003
 
         self.spawn_interval = 70  # frames between obstacle spawns
@@ -43,7 +45,8 @@ class GameEngine:
         if self.game_over:
             return
 
-        self.speed += self.speed_increase_per_frame
+        # Speed ramps up gradually but never exceeds MAX_SPEED.
+        self.speed = min(self.speed + self.speed_increase_per_frame, MAX_SPEED)
         self.player.update()
 
         self._spawn_timer += 1
@@ -55,17 +58,12 @@ class GameEngine:
             obstacle.move()
             obstacle.speed = self.speed
 
-        # NOTE: collision is only checked against each obstacle's rect
-        # *after* it has already moved for the frame. There's no check
-        # for whether the obstacle's path crossed the player along the
-        # way. Since self.speed has no cap, it eventually grows large
-        # enough that an obstacle can cover more horizontal distance
-        # in one frame than the player's own width - meaning it can be
-        # entirely to the right of the player on one frame and entirely
-        # to the left on the next, skipping the player's hitbox
-        # completely and never registering a hit. See Task 1.
+        # Collision uses each obstacle's swept rect (everything it passed
+        # through this frame), so a fast obstacle can never skip over the
+        # player's hitbox between two frames.
+        player_rect = self.player.rect()
         for obstacle in self.obstacles:
-            if obstacle.rect().colliderect(self.player.rect()):
+            if obstacle.swept_rect().colliderect(player_rect):
                 self.game_over = True
                 return
 
